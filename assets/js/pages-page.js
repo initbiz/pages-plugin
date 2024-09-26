@@ -15,13 +15,13 @@
     PagesPage.prototype.constructor = PagesPage
 
     PagesPage.prototype.init = function() {
-        this.$masterTabs = $('#pages-master-tabs')
-        this.$sidePanel = $('#pages-side-panel')
-        this.$pageTree = $('[data-control=treeview]', this.$sidePanel)
-        this.masterTabsObj = this.$masterTabs.data('oc.tab')
-        this.snippetManager = new $.oc.pages.snippetManager(this.$masterTabs)
+        this.$masterTabs = $('#pages-master-tabs');
+        this.$sidePanel = $('#pages-side-panel');
+        this.$pageTree = $('[data-control=treeview]', this.$sidePanel);
+        this.masterTabsObj = this.$masterTabs.data('oc.tab');
 
-        this.registerHandlers()
+        this.registerHandlers();
+        this.loadStoredOpenTabs();
     }
 
     PagesPage.prototype.registerHandlers = function() {
@@ -62,7 +62,7 @@
         $(document).on('submenu.oc.treeview', 'form.layout[data-content-id=pages]', this.proxy(this.onSidebarSubmenuItemClick))
 
         // The Delete Object button click
-        $(document).on('click', '#pages-side-panel form button[data-control=delete-object], #pages-side-panel form button[data-control=delete-template]',
+        $(document).on('click', '#pages-side-panel form button[data-control~=delete-object], #pages-side-panel form button[data-control~=delete-template]',
             this.proxy(this.onDeleteObject))
 
         // A new tab is added to the editor
@@ -76,25 +76,25 @@
      * Displays the concurrency resolution form.
      */
     PagesPage.prototype.handleMtimeMismatch = function (form) {
-        var $form = $(form)
+        var $form = $(form);
 
-        $form.popup({ handler: 'onOpenConcurrencyResolveForm' })
+        $form.popup({ handler: 'onOpenConcurrencyResolveForm' });
 
         var popup = $form.data('oc.popup'),
-            self = this
+            self = this;
 
         $(popup.$container).on('click', 'button[data-action=reload]', function(){
-            popup.hide()
-            self.reloadForm($form)
-        })
+            popup.hide();
+            self.reloadForm($form);
+        });
 
         $(popup.$container).on('click', 'button[data-action=save]', function(){
-            popup.hide()
+            popup.hide();
 
-            $('input[name=objectForceSave]', $form).val(1)
-            $('a[data-request=onSave]', $form).trigger('click')
-            $('input[name=objectForceSave]', $form).val(0)
-        })
+            $('input[name=objectForceSave]', $form).val(1);
+            $('a[data-request=onSave]', $form).get(0).click();
+            $('input[name=objectForceSave]', $form).val(0);
+        });
     }
 
     /*
@@ -108,23 +108,24 @@
             },
             tabId = data.type + '-' + data.theme + '-' + data.path,
             tab = this.masterTabsObj.findByIdentifier(tabId),
-            self = this
+            self = this;
 
         /*
          * Update tab
          */
 
-        $.oc.stripeLoadIndicator.show()
-        $form.request('onOpen', {
-            data: data
-        }).done(function(data) {
-            $.oc.stripeLoadIndicator.hide()
-            self.$masterTabs.ocTab('updateTab', tab, data.tabTitle, data.tab)
-            self.$masterTabs.ocTab('unmodifyTab', tab)
-            self.updateModifiedCounter()
-        }).always(function(){
-            $.oc.stripeLoadIndicator.hide()
-        })
+        $.oc.stripeLoadIndicator.show();
+        $form
+            .request('onOpen', {
+                data: data
+            }).done(function(data) {
+                $.oc.stripeLoadIndicator.hide();
+                self.$masterTabs.ocTab('updateTab', tab, data.tabTitle, data.tab);
+                self.$masterTabs.ocTab('unmodifyTab', tab);
+                self.updateModifiedCounter();
+            }).always(function(){
+                $.oc.stripeLoadIndicator.hide();
+            });
     }
 
     /*
@@ -166,6 +167,8 @@
         } else if ($tabControl.hasClass('secondary')) {
             // TODO: Focus the code or rich editor here
         }
+
+        this.storeOpenTabs();
     }
 
     /*
@@ -181,7 +184,8 @@
      * Triggered when a master tab is closed.
      */
     PagesPage.prototype.onTabClosed = function() {
-        this.updateModifiedCounter()
+        this.updateModifiedCounter();
+        this.storeOpenTabs();
     }
 
     /*
@@ -205,14 +209,14 @@
             $tabPane = $form.closest('.tab-pane')
 
          // Update the visibilities of the commit & reset buttons
-        $('[data-control=commit-button]', $form).toggleClass('hide', !data.canCommit)
-        $('[data-control=reset-button]', $form).toggleClass('hide', !data.canReset)
+        $('[data-control=commit-button]', $form).toggleClass('oc-hide hide', !data.canCommit)
+        $('[data-control=reset-button]', $form).toggleClass('oc-hide hide', !data.canReset)
 
         if (data.objectPath !== undefined) {
             $('input[name=objectPath]', $form).val(data.objectPath)
             $('input[name=objectMtime]', $form).val(data.objectMtime)
-            $('[data-control=delete-button]', $form).removeClass('hide')
-            $('[data-control=preview-button]', $form).removeClass('hide')
+            $('[data-control=delete-button]', $form).removeClass('oc-hide hide')
+            $('[data-control=preview-button]', $form).removeClass('oc-hide hide')
 
             if (data.pageUrl !== undefined)
                 $('[data-control=preview-button]', $form).attr('href', data.pageUrl)
@@ -231,11 +235,15 @@
         this.$pageTree.treeView('markActive', tabId)
         $('[data-control=filelist]', this.$sidePanel).fileList('markActive', tabId)
 
+        // Disable fancy layout on nested forms in repeater items
+        $('.field-repeater-item .form-tabless-fields', $tabPane).addClass('not-fancy');
+
         var objectType = $('input[name=objectType]', $form).val()
         if (objectType.length > 0 &&
             (context.handler == 'onSave' || context.handler == 'onCommit' || context.handler == 'onReset')
         )
-           this.updateObjectList(objectType)
+
+        this.updateObjectList(objectType);
 
         if (context.handler == 'onSave' && (!data['X_OCTOBER_ERROR_FIELDS'] && !data['X_OCTOBER_ERROR_MESSAGE']))
             $form.trigger('unchange.oc.changeMonitor')
@@ -251,6 +259,18 @@
             $tabPane = $(form).closest('.tab-pane')
 
         this.updateContentEditorMode($tabPane, false)
+    }
+
+    PagesPage.prototype.onDeletePageSingle  = function(el) {
+        var $el = $(el);
+
+        $el.request('onDelete', {
+            success: function(data) {
+                $.oc.pagesPage.closeTabs(data, 'page');
+                $.oc.pagesPage.updateObjectList('page');
+                $(this).trigger('close.oc.tab', [{force: true}]);
+            }
+        });
     }
 
     /*
@@ -271,11 +291,11 @@
         $.oc.stripeLoadIndicator.show()
         $form.request(objectList + '::onUpdate', {
             complete: function(data) {
-                $('button[data-control=delete-object], button[data-control=delete-template]', $form).trigger('oc.triggerOn.update')
+                $('button[data-control~=delete-object], button[data-control~=delete-template]', $form).trigger('oc.triggerOn.update')
             }
         }).always(function(){
             $.oc.stripeLoadIndicator.hide()
-        })
+        });
     }
 
     /*
@@ -308,31 +328,21 @@
             },
             tabId = data.type + '-' + data.theme + '-' + data.path
 
-        if ($item.data('type') == 'snippet') {
-            this.snippetManager.onSidebarSnippetClick($item)
+        // Find if the tab is already opened
+        if (this.masterTabsObj.goTo(tabId)) {
+            return false;
+         }
 
-            return
-        }
-
-        /*
-         * Find if the tab is already opened
-         */
-
-         if (this.masterTabsObj.goTo(tabId))
-            return false
-
-        /*
-         * Open a new tab
-         */
-
+        // Open a new tab
         $.oc.stripeLoadIndicator.show()
-        $form.request('onOpen', {
-            data: data
-        }).done(function(data) {
-            self.$masterTabs.ocTab('addTab', data.tabTitle, data.tab, tabId, $form.data('type-icon'))
-        }).always(function() {
-            $.oc.stripeLoadIndicator.hide()
-        })
+        $form
+            .request('onOpen', {
+                data: data
+            }).done(function(data) {
+                self.$masterTabs.ocTab('addTab', data.tabTitle, data.tab, tabId, $form.data('type-icon'));
+            }).always(function() {
+                $.oc.stripeLoadIndicator.hide();
+            });
 
         return false
     }
@@ -364,17 +374,18 @@
 
         e.stopPropagation()
 
-        return false
+        return false;
     }
 
     /*
      * Triggered when an item is clicked in the sidebar submenu
      */
     PagesPage.prototype.onSidebarSubmenuItemClick = function(e) {
-        if ($(e.clickEvent.target).data('control') == 'create-object')
-            this.onCreateObject(e.clickEvent)
+        if ($(e.clickEvent.target).data('control') == 'create-object') {
+            this.onCreateObject(e.clickEvent);
+        }
 
-        return false
+        return false;
     }
 
     /*
@@ -453,59 +464,65 @@
         if ($(e.target).attr('id') != 'pages-master-tabs')
             return
 
-            var $collapseIcon = $('<a href="javascript:;" class="tab-collapse-icon tabless"><i class="icon-chevron-up"></i></a>'),
-                $panel = $('.form-tabless-fields', data.pane),
-                $secondaryPanel = $('.control-tabs.secondary-tabs', data.pane),
-                $primaryPanel = $('.control-tabs.primary-tabs', data.pane),
-                hasSecondaryTabs = $secondaryPanel.length > 0
+        var $collapseIcon = $('<a href="javascript:;" class="tab-collapse-icon tabless"><i class="icon-chevron-up"></i></a>'),
+            $panel = $('.form-tabless-fields', data.pane),
+            $secondaryPanel = $('.control-tabs.secondary-tabs', data.pane),
+            $primaryPanel = $('.control-tabs.primary-tabs', data.pane),
+            hasSecondaryTabs = $secondaryPanel.length > 0
 
-            $secondaryPanel.addClass('secondary-content-tabs')
+        $secondaryPanel.addClass('secondary-content-tabs')
 
-            $panel.append($collapseIcon)
+        // Disable fancy layout on nested forms
+        $('.form-tabless-fields', $secondaryPanel).addClass('not-fancy');
 
-            if (!hasSecondaryTabs) {
-                $('.primary-tabs').parent().removeClass('min-size')
-            }
+        $panel.append($collapseIcon)
 
-            $collapseIcon.click(function(){
-                $panel.toggleClass('collapsed')
+        if (!hasSecondaryTabs) {
+            $primaryPanel.parent().removeClass('min-size');
+        }
 
+        $secondaryPanel.find('> .tab-content > .tab-pane').not(':has(>.form-group[data-field-name=markup],>div>div.stretch)').addClass('padded-pane');
+        $secondaryPanel.find('> .layout-row > .nav-tabs > li:gt(0)').addClass('tab-content-bg');
+
+        $collapseIcon.click(function(){
+            $panel.toggleClass('collapsed')
+
+            if (typeof(localStorage) !== 'undefined')
+                localStorage.ocPagesTablessCollapsed = $panel.hasClass('collapsed') ? 1 : 0
+
+            window.setTimeout(function(){
+                $(window).trigger('oc.updateUi')
+            }, 500)
+
+            return false
+        })
+
+        var $primaryCollapseIcon = $('<a href="javascript:;" class="tab-collapse-icon primary"><i class="icon-chevron-down"></i></a>')
+
+        if ($primaryPanel.length > 0) {
+            $secondaryPanel.append($primaryCollapseIcon)
+
+            $primaryCollapseIcon.click(function(){
+                $primaryPanel.toggleClass('collapsed')
+                $secondaryPanel.toggleClass('primary-collapsed')
+                $(window).trigger('oc.updateUi')
                 if (typeof(localStorage) !== 'undefined')
-                    localStorage.ocPagesTablessCollapsed = $panel.hasClass('collapsed') ? 1 : 0
-
-                window.setTimeout(function(){
-                    $(window).trigger('oc.updateUi')
-                }, 500)
-
+                    localStorage.ocPagesPrimaryCollapsed = $primaryPanel.hasClass('collapsed') ? 1 : 0
                 return false
             })
+        } else {
+            $secondaryPanel.addClass('primary-collapsed')
+        }
 
-            var $primaryCollapseIcon = $('<a href="javascript:;" class="tab-collapse-icon primary"><i class="icon-chevron-down"></i></a>')
+        if (typeof(localStorage) !== 'undefined') {
+            if (!$('a', data.tab).hasClass('new-template') && localStorage.ocPagesTablessCollapsed == 1)
+                $panel.addClass('collapsed')
 
-            if ($primaryPanel.length > 0) {
-                $secondaryPanel.append($primaryCollapseIcon)
-
-                $primaryCollapseIcon.click(function(){
-                    $primaryPanel.toggleClass('collapsed')
-                    $secondaryPanel.toggleClass('primary-collapsed')
-                    $(window).trigger('oc.updateUi')
-                    if (typeof(localStorage) !== 'undefined')
-                        localStorage.ocPagesPrimaryCollapsed = $primaryPanel.hasClass('collapsed') ? 1 : 0
-                    return false
-                })
-            } else {
+            if (localStorage.ocPagesPrimaryCollapsed == 1 && hasSecondaryTabs) {
+                $primaryPanel.addClass('collapsed')
                 $secondaryPanel.addClass('primary-collapsed')
             }
-
-            if (typeof(localStorage) !== 'undefined') {
-                if (!$('a', data.tab).hasClass('new-template') && localStorage.ocPagesTablessCollapsed == 1)
-                    $panel.addClass('collapsed')
-
-                if (localStorage.ocPagesPrimaryCollapsed == 1 && hasSecondaryTabs) {
-                    $primaryPanel.addClass('collapsed')
-                    $secondaryPanel.addClass('primary-collapsed')
-                }
-            }
+        }
 
         var $form = $('form', data.pane),
             self = this,
@@ -515,8 +532,8 @@
 
         $form.on('changed.oc.changeMonitor', function() {
             $panel.trigger('modified.oc.tab')
-            $panel.find('[data-control=commit-button]').addClass('hide');
-            $panel.find('[data-control=reset-button]').addClass('hide');
+            $panel.find('[data-control=commit-button]').addClass('oc-hide hide');
+            $panel.find('[data-control=reset-button]').addClass('oc-hide hide');
             self.updateModifiedCounter()
         })
 
@@ -622,11 +639,75 @@
         if (parts.length >= 2)
             return parts.pop().toLowerCase()
 
-        return 'htm'
+        return 'htm';
+    }
+
+    /*
+     * Store open tabs in a cookie
+     */
+    PagesPage.prototype.storeOpenTabs = function () {
+        if (!Cookies) {
+            return;
+        }
+
+        var openTabs = [];
+        document.querySelectorAll('#pages-master-tabs .tab-pane').forEach((pane) => {
+            var objectPath = pane.querySelector('[name=objectPath]'),
+                objectType = pane.querySelector('[name=objectType]');
+
+            if (!objectPath || !objectType) {
+                return;
+            }
+
+            openTabs.push({
+                path: objectPath.value,
+                type: objectType.value,
+            });
+        });
+
+        Cookies.set('oc-rainlab-pages-open-tabs', JSON.stringify(openTabs), { expires: 365, path: '/' });
+    }
+
+    PagesPage.prototype.loadStoredOpenTabs = function () {
+        var cookieValue = Cookies.get('oc-rainlab-pages-open-tabs');
+        if (!cookieValue) {
+            return;
+        }
+
+        var openTabs = JSON.parse(cookieValue);
+        if (!Array.isArray(openTabs) || !openTabs.length) {
+            return;
+        }
+
+        var self = this,
+            $form = $('#pages-side-panel form');
+
+        $.oc.stripeLoadIndicator.show();
+        $form
+            .request('onOpenMultiple', {
+                data: {
+                    openTabs: openTabs
+                }
+            }).done(function(data) {
+                if (!data.multiObjects || !Array.isArray(data.multiObjects)) {
+                    return;
+                }
+
+                $.each(data.multiObjects, function(index, item) {
+                    var tabId = item.type + '-' + item.theme + '-' + item.path,
+                        $sideForm = $('[data-object-type='+item.type+']');
+
+                    self.$masterTabs.ocTab('addTab', item.tabTitle, item.tab, tabId, $sideForm.data('type-icon'));
+                });
+
+                self.updateModifiedCounter();
+            }).always(function(){
+                $.oc.stripeLoadIndicator.hide()
+            });
     }
 
     $(document).ready(function(){
-        $.oc.pagesPage = new PagesPage()
-    })
+        $.oc.pagesPage = new PagesPage();
+    });
 
 }(window.jQuery);
